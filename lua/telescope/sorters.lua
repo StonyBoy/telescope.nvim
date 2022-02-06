@@ -482,8 +482,12 @@ sorters.highlighter_only = function(opts)
   opts = opts or {}
   local fzy = opts.fzy_mod or require "telescope.algos.fzy"
 
-  return Sorter:new {
-    scoring_function = function()
+  return sorters.Sorter:new {
+    scoring_function = function(_, prompt, line)
+      -- Check for actual matches before running the scoring alogrithm.
+      if not fzy.has_match(prompt, line) then
+        return -1
+      end
       return 1
     end,
 
