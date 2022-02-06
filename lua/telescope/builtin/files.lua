@@ -393,7 +393,7 @@ files.current_buffer_fuzzy_find = function(opts)
       results = lines_with_numbers,
       entry_maker = opts.entry_maker or make_entry.gen_from_buffer_lines(opts),
     },
-    sorter = conf.generic_sorter(opts),
+    sorter = opts.sort and opts.sort() or conf.generic_sorter(),
     previewer = conf.grep_previewer(opts),
     attach_mappings = function()
       action_set.select:enhance {
