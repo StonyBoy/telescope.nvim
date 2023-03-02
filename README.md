@@ -1,6 +1,7 @@
 # telescope.nvim
 
 [![Gitter](https://badges.gitter.im/nvim-telescope/community.svg)](https://gitter.im/nvim-telescope/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+[![LuaRocks](https://img.shields.io/luarocks/v/Conni2461/telescope.nvim?logo=lua&color=purple)](https://luarocks.org/modules/Conni2461/telescope.nvim)
 
 Gaze deeply into unknown regions using the power of the moon.
 
@@ -67,7 +68,7 @@ wiki.
 - [sharkdp/fd](https://github.com/sharkdp/fd) (finder)
 - [nvim-treesitter/nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (finder/preview)
 - [neovim LSP]( https://neovim.io/doc/user/lsp.html) (picker)
-- [devicons](https://github.com/kyazdani42/nvim-web-devicons) (icons)
+- [devicons](https://github.com/nvim-tree/nvim-web-devicons) (icons)
 
 ### Installation
 
@@ -82,7 +83,7 @@ Using [vim-plug](https://github.com/junegunn/vim-plug)
 
 ```viml
 Plug 'nvim-lua/plenary.nvim'
-Plug 'nvim-telescope/telescope.nvim', { 'tag': '0.1.0' }
+Plug 'nvim-telescope/telescope.nvim', { 'tag': '0.1.1' }
 " or                                , { 'branch': '0.1.x' }
 ```
 
@@ -90,17 +91,36 @@ Using [dein](https://github.com/Shougo/dein.vim)
 
 ```viml
 call dein#add('nvim-lua/plenary.nvim')
-call dein#add('nvim-telescope/telescope.nvim', { 'rev': '0.1.0' })
+call dein#add('nvim-telescope/telescope.nvim', { 'rev': '0.1.1' })
 " or                                         , { 'rev': '0.1.x' })
 ```
 Using [packer.nvim](https://github.com/wbthomason/packer.nvim)
 
 ```lua
 use {
-  'nvim-telescope/telescope.nvim', tag = '0.1.0',
+  'nvim-telescope/telescope.nvim', tag = '0.1.1',
 -- or                            , branch = '0.1.x',
   requires = { {'nvim-lua/plenary.nvim'} }
 }
+```
+
+Using [lazy.nvim](https://github.com/folke/lazy.nvim)
+
+```lua
+-- init.lua:
+    {
+    'nvim-telescope/telescope.nvim', tag = '0.1.1',
+-- or                              , branch = '0.1.1',
+      dependencies = { 'nvim-lua/plenary.nvim' }
+    }
+
+-- plugins/telescope.lua:
+return {
+    {
+    'nvim-telescope/telescope.nvim', tag = '0.1.1',
+-- or                              , branch = '0.1.1',
+      dependencies = { 'nvim-lua/plenary.nvim' }
+    }
 ```
 
 ### checkhealth
@@ -279,12 +299,12 @@ Built-in functions. Ready to be bound to any key you like.
 
 ### File Pickers
 
-| Functions                           | Description                                                                                                                       |
-|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| `builtin.find_files`                | Lists files in your current working directory, respects .gitignore                                                                |
-| `builtin.git_files`                 | Fuzzy search through the output of `git ls-files` command, respects .gitignore                                                    |
-| `builtin.grep_string`               | Searches for the string under your cursor in your current working directory                                                       |
-| `builtin.live_grep`                 | Search for a string in your current working directory and get results live as you type, respects .gitignore                       |
+| Functions                           | Description                                                                                                                                                              |
+|-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `builtin.find_files`                | Lists files in your current working directory, respects .gitignore                                                                                                       |
+| `builtin.git_files`                 | Fuzzy search through the output of `git ls-files` command, respects .gitignore                                                                                           |
+| `builtin.grep_string`               | Searches for the string under your cursor or selection in your current working directory                                                                                              |
+| `builtin.live_grep`                 | Search for a string in your current working directory and get results live as you type, respects .gitignore. (Requires [ripgrep](https://github.com/BurntSushi/ripgrep)) |
 
 ### Vim Pickers
 
