@@ -90,7 +90,7 @@ function Picker:new(opts)
     sorter = opts.sorter or require("telescope.sorters").empty(),
 
     all_previewers = opts.previewer,
-    current_previewer_index = 1,
+    current_previewer_index = opts.current_previewer_index or 1,
 
     default_selection_index = opts.default_selection_index,
 
@@ -147,8 +147,8 @@ function Picker:new(opts)
     if obj.all_previewers[1] == nil then
       obj.all_previewers = { obj.all_previewers }
     end
-    obj.previewer = obj.all_previewers[1]
-    if obj.preview_title == nil then
+    obj.previewer = obj.all_previewers[obj.current_previewer_index]
+    if obj.preview_title == nil or #obj.all_previewers > 1 then
       obj.preview_title = obj.previewer:title(nil, config.values.dynamic_preview_title)
     else
       obj.fix_preview_title = true
@@ -753,7 +753,9 @@ function Picker.close_windows(status)
   utils.win_delete("preview_border_win", status.preview_border_win, true, true)
 
   -- we cant use win_delete. We first need to close and then delete the buffer
-  vim.api.nvim_win_close(status.prompt_win, true)
+  if vim.api.nvim_win_is_valid(status.prompt_win) then
+    vim.api.nvim_win_close(status.prompt_win, true)
+  end
   utils.buf_delete(status.prompt_bufnr)
 
   state.clear_status(status.prompt_bufnr)
@@ -857,7 +859,7 @@ end
 function Picker:_reset_prefix_color(hl_group)
   self._current_prefix_hl_group = hl_group or nil
 
-  if self.prompt_prefix ~= "" then
+  if self.prompt_prefix ~= "" and a.nvim_buf_is_valid(self.prompt_bufnr) then
     vim.api.nvim_buf_add_highlight(
       self.prompt_bufnr,
       ns_telescope_prompt_prefix,
@@ -1559,15 +1561,24 @@ function Picker:_resume_picker()
     index = index + 1
   end
   self.cache_picker.is_cached = false
+  local on_resume_complete = function()
+    if vim.api.nvim_buf_is_valid(self.prompt_bufnr) then
+      vim.api.nvim_buf_call(self.prompt_bufnr, function()
+        vim.cmd "do User TelescopeResumePost"
+      end)
+    end
+  end
   -- if text changed, required to set anew to restart finder; otherwise hl and selection
   if self.cache_picker.cached_prompt ~= self.default_text then
     self:set_prompt(self.default_text)
+    on_resume_complete()
   else
     -- scheduling required to apply highlighting and selection appropriately
     await_schedule(function()
       if self.cache_picker.selection_row ~= nil then
         self:set_selection(self.cache_picker.selection_row)
       end
+      on_resume_complete()
     end)
   end
 end
