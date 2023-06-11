@@ -497,7 +497,7 @@ files.current_buffer_fuzzy_find = function(opts)
   end
 
   pickers
-   .new(opts, {
+    .new(opts, {
       prompt_title = "Current Buffer Fuzzy",
       finder = finders.new_table {
         results = lines_with_numbers,
