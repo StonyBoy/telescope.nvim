@@ -222,6 +222,18 @@ actions.preview_scrolling_down = function(prompt_bufnr)
   action_set.scroll_previewer(prompt_bufnr, 1)
 end
 
+--- Scroll the preview window to the left
+---@param prompt_bufnr number: The prompt bufnr
+actions.preview_scrolling_left = function(prompt_bufnr)
+  action_set.scroll_horizontal_previewer(prompt_bufnr, -1)
+end
+
+--- Scroll the preview window to the right
+---@param prompt_bufnr number: The prompt bufnr
+actions.preview_scrolling_right = function(prompt_bufnr)
+  action_set.scroll_horizontal_previewer(prompt_bufnr, 1)
+end
+
 --- Scroll the results window up
 ---@param prompt_bufnr number: The prompt bufnr
 actions.results_scrolling_up = function(prompt_bufnr)
@@ -232,6 +244,18 @@ end
 ---@param prompt_bufnr number: The prompt bufnr
 actions.results_scrolling_down = function(prompt_bufnr)
   action_set.scroll_results(prompt_bufnr, 1)
+end
+
+--- Scroll the results window to the left
+---@param prompt_bufnr number: The prompt bufnr
+actions.results_scrolling_left = function(prompt_bufnr)
+  action_set.scroll_horizontal_results(prompt_bufnr, -1)
+end
+
+--- Scroll the results window to the right
+---@param prompt_bufnr number: The prompt bufnr
+actions.results_scrolling_right = function(prompt_bufnr)
+  action_set.scroll_horizontal_results(prompt_bufnr, 1)
 end
 
 --- Center the cursor in the window, can be used after selecting a file to edit
@@ -494,6 +518,27 @@ actions.insert_value = function(prompt_bufnr)
   return selection.value
 end
 
+--- Ask user to confirm an action
+---@param prompt string: The prompt for confirmation
+---@param default_value string: The default value of user input
+---@param yes_values table: List of positive user confirmations ({"y", "yes"} by default)
+---@return boolean: Whether user confirmed the prompt
+local function ask_to_confirm(prompt, default_value, yes_values)
+  yes_values = yes_values or { "y", "yes" }
+  default_value = default_value or ""
+  local confirmation = vim.fn.input(prompt, default_value)
+  confirmation = string.lower(confirmation)
+  if string.len(confirmation) == 0 then
+    return false
+  end
+  for _, v in pairs(yes_values) do
+    if v == confirmation then
+      return true
+    end
+  end
+  return false
+end
+
 --- Create and checkout a new git branch if it doesn't already exist
 ---@param prompt_bufnr number: The prompt bufnr
 actions.git_create_branch = function(prompt_bufnr)
@@ -506,11 +551,11 @@ actions.git_create_branch = function(prompt_bufnr)
       level = "ERROR",
     })
   else
-    local confirmation = vim.fn.input(string.format("Create new branch '%s'? [y/n]: ", new_branch))
-    if string.len(confirmation) == 0 or string.sub(string.lower(confirmation), 0, 1) ~= "y" then
+    local confirmation = ask_to_confirm(string.format("Create new branch '%s'? [y/n]: ", new_branch))
+    if not confirmation then
       utils.notify("actions.git_create_branch", {
-        msg = string.format("fail to create branch: '%s'", new_branch),
-        level = "ERROR",
+        msg = string.format("branch creation canceled: '%s'", new_branch),
+        level = "INFO",
       })
       return
     end
@@ -623,6 +668,43 @@ actions.git_switch_branch = function(prompt_bufnr)
   end
 end
 
+--- Action to rename selected git branch
+--- @param prompt_bufnr number: The prompt bufnr
+actions.git_rename_branch = function(prompt_bufnr)
+  local cwd = action_state.get_current_picker(prompt_bufnr).cwd
+  local selection = action_state.get_selected_entry()
+  if selection == nil then
+    utils.__warn_no_selection "actions.git_rename_branch"
+    return
+  end
+  -- Keeps the selected branch name for the input that asks for the new branch name
+  local new_branch = vim.fn.input("New branch name: ", selection.value)
+  if new_branch == "" then
+    utils.notify("actions.git_rename_branch", {
+      msg = "Missing the new branch name",
+      level = "ERROR",
+    })
+  else
+    actions.close(prompt_bufnr)
+    local _, ret, stderr = utils.get_os_command_output({ "git", "branch", "-m", selection.value, new_branch }, cwd)
+    if ret == 0 then
+      utils.notify("actions.git_rename_branch", {
+        msg = string.format("Renamed branch: '%s'", selection.value),
+        level = "INFO",
+      })
+    else
+      utils.notify("actions.git_rename_branch", {
+        msg = string.format(
+          "Error when renaming branch: %s. Git returned: '%s'",
+          selection.value,
+          table.concat(stderr, " ")
+        ),
+        level = "ERROR",
+      })
+    end
+  end
+end
+
 local function make_git_branch_action(opts)
   return function(prompt_bufnr)
     local cwd = action_state.get_current_picker(prompt_bufnr).cwd
@@ -634,8 +716,12 @@ local function make_git_branch_action(opts)
 
     local should_confirm = opts.should_confirm
     if should_confirm then
-      local confirmation = vim.fn.input(string.format(opts.confirmation_question, selection.value))
-      if confirmation ~= "" and string.lower(confirmation) ~= "y" then
+      local confirmation = ask_to_confirm(string.format(opts.confirmation_question, selection.value), "y")
+      if not confirmation then
+        utils.notify(opts.action_name, {
+          msg = "action canceled",
+          level = "INFO",
+        })
         return
       end
     end
@@ -671,8 +757,12 @@ actions.git_track_branch = make_git_branch_action {
 --- Delete all currently selected branches
 ---@param prompt_bufnr number: The prompt bufnr
 actions.git_delete_branch = function(prompt_bufnr)
-  local confirmation = vim.fn.input "Do you really want to delete the selected branches? [Y/n] "
-  if confirmation ~= "" and string.lower(confirmation) ~= "y" then
+  local confirmation = ask_to_confirm("Do you really want to delete the selected branches? [Y/n] ", "y")
+  if not confirmation then
+    utils.notify("actions.git_delete_branch", {
+      msg = "action canceled",
+      level = "INFO",
+    })
     return
   end
 
@@ -731,8 +821,13 @@ local git_reset_branch = function(prompt_bufnr, mode)
     return
   end
 
-  local confirmation = vim.fn.input("Do you really wanna " .. mode .. " reset to " .. selection.value .. "? [Y/n] ")
-  if confirmation ~= "" and string.lower(confirmation) ~= "y" then
+  local confirmation =
+    ask_to_confirm("Do you really wanna " .. mode .. " reset to " .. selection.value .. "? [Y/n] ", "y")
+  if not confirmation then
+    utils.notify("actions.git_reset_branch", {
+      msg = "action canceled",
+      level = "INFO",
+    })
     return
   end
 
@@ -831,6 +926,7 @@ local send_selected_to_qf = function(prompt_bufnr, mode, target)
   local prompt = picker:_get_prompt()
   actions.close(prompt_bufnr)
 
+  vim.api.nvim_exec_autocmds("QuickFixCmdPre", {})
   if target == "loclist" then
     vim.fn.setloclist(picker.original_win_id, qf_entries, mode)
   else
@@ -838,6 +934,7 @@ local send_selected_to_qf = function(prompt_bufnr, mode, target)
     vim.fn.setqflist(qf_entries, mode)
     vim.fn.setqflist({}, "a", { title = qf_title })
   end
+  vim.api.nvim_exec_autocmds("QuickFixCmdPost", {})
 end
 
 local send_all_to_qf = function(prompt_bufnr, mode, target)
@@ -852,13 +949,16 @@ local send_all_to_qf = function(prompt_bufnr, mode, target)
   local prompt = picker:_get_prompt()
   actions.close(prompt_bufnr)
 
+  vim.api.nvim_exec_autocmds("QuickFixCmdPre", {})
+  local qf_title = string.format([[%s (%s)]], picker.prompt_title, prompt)
   if target == "loclist" then
     vim.fn.setloclist(picker.original_win_id, qf_entries, mode)
+    vim.fn.setloclist(picker.original_win_id, {}, "a", { title = qf_title })
   else
     vim.fn.setqflist(qf_entries, mode)
-    local qf_title = string.format([[%s (%s)]], picker.prompt_title, prompt)
     vim.fn.setqflist({}, "a", { title = qf_title })
   end
+  vim.api.nvim_exec_autocmds("QuickFixCmdPost", {})
 end
 
 --- Sends the selected entries to the quickfix list, replacing the previous entries.
@@ -1100,12 +1200,25 @@ end
 --- This action is not mapped by default and only intended for |builtin.pickers|.
 ---@param prompt_bufnr number: The prompt bufnr
 actions.remove_selected_picker = function(prompt_bufnr)
-  local current_picker = action_state.get_current_picker(prompt_bufnr)
-  local selection_index = current_picker:get_index(current_picker:get_selection_row())
+  local curr_picker = action_state.get_current_picker(prompt_bufnr)
+  local curr_entry = action_state.get_selected_entry()
   local cached_pickers = state.get_global_key "cached_pickers"
-  current_picker:delete_selection(function()
+
+  if not curr_entry then
+    return
+  end
+
+  local selection_index, _ = utils.list_find(function(v)
+    if curr_entry.value == v.value then
+      return true
+    end
+    return false
+  end, curr_picker.finder.results)
+
+  curr_picker:delete_selection(function()
     table.remove(cached_pickers, selection_index)
   end)
+
   if #cached_pickers == 0 then
     actions.close(prompt_bufnr)
   end
@@ -1297,7 +1410,8 @@ actions.which_key = function(prompt_bufnr, opts)
   -- only set up autocommand after showing preview completed
   if opts.close_with_action then
     vim.schedule(function()
-      vim.api.nvim_create_autocmd("User TelescopeKeymap", {
+      vim.api.nvim_create_autocmd("User", {
+        pattern = "TelescopeKeymap",
         once = true,
         callback = function()
           pcall(vim.api.nvim_win_close, km_win_id, true)
@@ -1314,21 +1428,50 @@ end
 ---@param prompt_bufnr number: The prompt bufnr
 actions.to_fuzzy_refine = function(prompt_bufnr)
   local line = action_state.get_current_line()
-  local prefix = (function()
+  local opts = (function()
+    local opts = {
+      sorter = conf.generic_sorter {},
+    }
+
     local title = action_state.get_current_picker(prompt_bufnr).prompt_title
     if title == "Live Grep" then
-      return "Find Word"
+      opts.prefix = "Find Word"
     elseif title == "LSP Dynamic Workspace Symbols" then
-      return "LSP Workspace Symbols"
+      opts.prefix = "LSP Workspace Symbols"
+      opts.sorter = conf.prefilter_sorter {
+        tag = "symbol_type",
+        sorter = opts.sorter,
+      }
     else
-      return "Fuzzy over"
+      opts.prefix = "Fuzzy over"
     end
+
+    return opts
   end)()
 
   require("telescope.actions.generate").refine(prompt_bufnr, {
-    prompt_title = string.format("%s (%s)", prefix, line),
-    sorter = conf.generic_sorter {},
+    prompt_title = string.format("%s (%s)", opts.prefix, line),
+    sorter = opts.sorter,
   })
+end
+
+--- Delete the selected mark or all the marks selected using multi selection.
+---@param prompt_bufnr number: The prompt bufnr
+actions.delete_mark = function(prompt_bufnr)
+  local current_picker = action_state.get_current_picker(prompt_bufnr)
+  current_picker:delete_selection(function(selection)
+    local bufname = selection.filename
+    local bufnr = vim.fn.bufnr(bufname)
+    local mark = selection.ordinal:sub(1, 1)
+
+    local success
+    if mark:match "%u" then
+      success = pcall(vim.api.nvim_del_mark, mark)
+    else
+      success = pcall(vim.api.nvim_buf_del_mark, bufnr, mark)
+    end
+    return success
+  end)
 end
 
 actions.nop = function(_) end

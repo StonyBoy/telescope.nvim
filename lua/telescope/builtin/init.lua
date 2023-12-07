@@ -103,6 +103,7 @@ builtin.treesitter = require_on_exported_call("telescope.builtin.__files").trees
 --- Live fuzzy search inside of the currently open buffer
 ---@param opts table: options to pass to the picker
 ---@field skip_empty_lines boolean: if true we don't display empty lines (default: false)
+---@field results_ts_highlight boolean: highlight result entries with treesitter (default: true)
 ---@field file_encoding string: file encoding for the previewer
 builtin.current_buffer_fuzzy_find = require_on_exported_call("telescope.builtin.__files").current_buffer_fuzzy_find
 
@@ -171,6 +172,24 @@ builtin.git_commits = require_on_exported_call("telescope.builtin.__git").commit
 ---@field current_file string: specify the current file that should be used for bcommits (default: current buffer)
 ---@field git_command table: command that will be executed. {"git","log","--pretty=oneline","--abbrev-commit"}
 builtin.git_bcommits = require_on_exported_call("telescope.builtin.__git").bcommits
+
+--- Lists commits for a range of lines in the current buffer with diff preview
+--- In visual mode, lists commits for the selected lines
+--- With operator mode enabled, lists commits inside the text object/motion
+--- - Default keymaps or your overridden `select_` keys:
+---   - `<cr>`: checks out the currently selected commit
+---   - `<c-v>`: opens a diff in a vertical split
+---   - `<c-x>`: opens a diff in a horizontal split
+---   - `<c-t>`: opens a diff in a new tab
+---@param opts table: options to pass to the picker
+---@field cwd string: specify the path of the repo
+---@field use_git_root boolean: if we should use git root as cwd or the cwd (important for submodule) (default: true)
+---@field current_file string: specify the current file that should be used for bcommits (default: current buffer)
+---@field git_command table: command that will be executed. the last element must be "-L". {"git","log","--pretty=oneline","--abbrev-commit","--no-patch","-L"}
+---@field from number: the first line number in the range (default: current line)
+---@field to number: the last line number in the range (default: the value of `from`)
+---@field operator boolean: select lines in operator-pending mode (default: false)
+builtin.git_bcommits_range = require_on_exported_call("telescope.builtin.__git").bcommits_range
 
 --- List branches for current directory, with output from `git log --oneline` shown in the preview window
 --- - Default keymaps:
@@ -330,6 +349,7 @@ builtin.reloader = require_on_exported_call("telescope.builtin.__internal").relo
 ---@field sort_mru boolean: Sorts all buffers after most recent used. Not just the current and last one (default: false)
 ---@field bufnr_width number: Defines the width of the buffer numbers in front of the filenames  (default: dynamic)
 ---@field file_encoding string: file encoding for the previewer
+---@field sort_buffers function: sort fn(bufnr_a, bufnr_b). true if bufnr_a should go first. Runs after sorting by most recent (if specified)
 builtin.buffers = require_on_exported_call("telescope.builtin.__internal").buffers
 
 --- Lists available colorschemes and applies them on `<cr>`
@@ -340,6 +360,7 @@ builtin.colorscheme = require_on_exported_call("telescope.builtin.__internal").c
 --- Lists vim marks and their value, jumps to the mark on `<cr>`
 ---@param opts table: options to pass to the picker
 ---@field file_encoding string: file encoding for the previewer
+---@field mark_type string: filter marks by type (default: "all", options: "all"|"global"|"local")
 builtin.marks = require_on_exported_call("telescope.builtin.__internal").marks
 
 --- Lists vim registers, pastes the contents of the register on `<cr>`
@@ -397,7 +418,7 @@ builtin.jumplist = require_on_exported_call("telescope.builtin.__internal").jump
 ---@param opts table: options to pass to the picker
 ---@field include_declaration boolean: include symbol declaration in the lsp references (default: true)
 ---@field include_current_line boolean: include current line (default: false)
----@field jump_type string: how to goto reference if there is only one and the definition file is different from the current file, values: "tab", "split", "vsplit", "never"
+---@field jump_type string: how to goto reference if there is only one and the definition file is different from the current file, values: "tab", "tab drop", "split", "vsplit", "never"
 ---@field fname_width number: defines the width of the filename section (default: 30)
 ---@field show_line boolean: show results text (default: true)
 ---@field trim_text boolean: trim results text (default: false)
@@ -422,7 +443,7 @@ builtin.lsp_outgoing_calls = require_on_exported_call("telescope.builtin.__lsp")
 
 --- Goto the definition of the word under the cursor, if there's only one, otherwise show all options in Telescope
 ---@param opts table: options to pass to the picker
----@field jump_type string: how to goto definition if there is only one and the definition file is different from the current file, values: "tab", "split", "vsplit", "never"
+---@field jump_type string: how to goto definition if there is only one and the definition file is different from the current file, values: "tab", "tab drop", "split", "vsplit", "never"
 ---@field fname_width number: defines the width of the filename section (default: 30)
 ---@field show_line boolean: show results text (default: true)
 ---@field trim_text boolean: trim results text (default: false)
@@ -433,17 +454,17 @@ builtin.lsp_definitions = require_on_exported_call("telescope.builtin.__lsp").de
 --- Goto the definition of the type of the word under the cursor, if there's only one,
 --- otherwise show all options in Telescope
 ---@param opts table: options to pass to the picker
----@field jump_type string: how to goto definition if there is only one and the definition file is different from the current file, values: "tab", "split", "vsplit", "never"
+---@field jump_type string: how to goto definition if there is only one and the definition file is different from the current file, values: "tab", "tab drop", "split", "vsplit", "never"
 ---@field fname_width number: defines the width of the filename section (default: 30)
 ---@field show_line boolean: show results text (default: true)
 ---@field trim_text boolean: trim results text (default: false)
 ---@field reuse_win boolean: jump to existing window if buffer is already opened (default: false)
 ---@field file_encoding string: file encoding for the previewer
-builtin.lsp_type_definitions = require("telescope.builtin.__lsp").type_definitions
+builtin.lsp_type_definitions = require_on_exported_call("telescope.builtin.__lsp").type_definitions
 
 --- Goto the implementation of the word under the cursor if there's only one, otherwise show all options in Telescope
 ---@param opts table: options to pass to the picker
----@field jump_type string: how to goto implementation if there is only one and the definition file is different from the current file, values: "tab", "split", "vsplit", "never"
+---@field jump_type string: how to goto implementation if there is only one and the definition file is different from the current file, values: "tab", "tab drop", "split", "vsplit", "never"
 ---@field fname_width number: defines the width of the filename section (default: 30)
 ---@field show_line boolean: show results text (default: true)
 ---@field trim_text boolean: trim results text (default: false)
@@ -482,7 +503,7 @@ builtin.lsp_workspace_symbols = require_on_exported_call("telescope.builtin.__ls
 
 --- Dynamically lists LSP for all workspace symbols
 --- - Default keymaps:
----   - `<C-l>`: show autocompletion menu to prefilter your query by type of symbol you want to see (i.e. `:variable:`)
+---   - `<C-l>`: show autocompletion menu to prefilter your query by type of symbol you want to see (i.e. `:variable:`), only works after refining to fuzzy search using <C-space>
 ---@param opts table: options to pass to the picker
 ---@field fname_width number: defines the width of the filename section (default: 30)
 ---@field show_line boolean: if true, shows the content of the line the symbol is found on (default: false)
@@ -503,6 +524,9 @@ builtin.lsp_dynamic_workspace_symbols = require_on_exported_call("telescope.buil
 ---   - `All severity flags can be passed as `string` or `number` as per `:vim.diagnostic.severity:`
 --- - Default keymaps:
 ---   - `<C-l>`: show autocompletion menu to prefilter your query with the diagnostic you want to see (i.e. `:warning:`)
+--- - sort_by option:
+---   - "buffer": order by bufnr (prioritizing current bufnr), severity, lnum
+---   - "severity": order by severity, bufnr (prioritizing current bufnr), lnum
 ---@param opts table: options to pass to the picker
 ---@field bufnr number|nil: Buffer number to get diagnostics from. Use 0 for current buffer or nil for all buffers
 ---@field severity string|number: filter diagnostics by severity name (string) or id (number)
@@ -511,9 +535,10 @@ builtin.lsp_dynamic_workspace_symbols = require_on_exported_call("telescope.buil
 ---@field root_dir string|boolean: if set to string, get diagnostics only for buffers under this dir otherwise cwd
 ---@field no_unlisted boolean: if true, get diagnostics only for listed buffers
 ---@field no_sign boolean: hide DiagnosticSigns from Results (default: false)
----@field line_width number: set length of diagnostic entry text in Results
+---@field line_width string|number: set length of diagnostic entry text in Results. Use 'full' for full untruncated text
 ---@field namespace number: limit your diagnostics to a specific namespace
 ---@field disable_coordinates boolean: don't show the line & row numbers (default: false)
+---@field sort_by string: sort order of the diagnostics results; see above notes (default: "buffer")
 builtin.diagnostics = require_on_exported_call("telescope.builtin.__diagnostics").get
 
 local apply_config = function(mod)
@@ -547,6 +572,14 @@ local apply_config = function(mod)
         local opts_attach = opts.attach_mappings
         opts.attach_mappings = function(prompt_bufnr, map)
           pconf.attach_mappings(prompt_bufnr, map)
+          return opts_attach(prompt_bufnr, map)
+        end
+      end
+
+      if defaults.attach_mappings and opts.attach_mappings then
+        local opts_attach = opts.attach_mappings
+        opts.attach_mappings = function(prompt_bufnr, map)
+          defaults.attach_mappings(prompt_bufnr, map)
           return opts_attach(prompt_bufnr, map)
         end
       end
