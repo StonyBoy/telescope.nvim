@@ -4,6 +4,7 @@ local utils = require "telescope.utils"
 local putils = require "telescope.previewers.utils"
 local Previewer = require "telescope.previewers.previewer"
 local conf = require("telescope.config").values
+local global_state = require "telescope.state"
 
 local pscan = require "plenary.scandir"
 
@@ -292,7 +293,7 @@ local search_cb_jump = function(self, bufnr, query)
   end
   vim.api.nvim_buf_call(bufnr, function()
     pcall(vim.fn.matchdelete, self.state.hl_id, self.state.winid)
-    vim.cmd "norm! gg"
+    vim.cmd "keepjumps norm! gg"
     vim.fn.search(query, "W")
     vim.cmd "norm! zz"
 
@@ -345,8 +346,6 @@ previewers.new_buffer_previewer = function(opts)
 
   local old_bufs = {}
   local bufname_table = {}
-
-  local global_state = require "telescope.state"
   local preview_window_id
 
   local function get_bufnr(self)
@@ -580,7 +579,10 @@ previewers.vimgrep = defaulter(function(opts)
       if entry.bufnr and (p == "[No Name]" or has_buftype) then
         local lines = vim.api.nvim_buf_get_lines(entry.bufnr, 0, -1, false)
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
-        jump_to_line(self, self.state.bufnr, entry)
+        -- schedule so that the lines are actually there and can be jumped onto when we call jump_to_line
+        vim.schedule(function()
+          jump_to_line(self, self.state.bufnr, entry)
+        end)
       else
         conf.buffer_previewer_maker(p, self.state.bufnr, {
           bufname = self.state.bufname,
@@ -598,7 +600,7 @@ end, {})
 
 previewers.qflist = previewers.vimgrep
 
-previewers.ctags = defaulter(function(_)
+previewers.ctags = defaulter(function(opts)
   local determine_jump = function(entry)
     if entry.scode then
       return function(self)
@@ -610,7 +612,7 @@ previewers.ctags = defaulter(function(_)
         end)
 
         pcall(vim.fn.matchdelete, self.state.hl_id, self.state.winid)
-        vim.cmd "norm! gg"
+        vim.cmd "keepjumps norm! gg"
         vim.fn.search(scode, "W")
         vim.cmd "norm! zz"
 
@@ -647,17 +649,19 @@ previewers.ctags = defaulter(function(_)
       conf.buffer_previewer_maker(entry.filename, self.state.bufnr, {
         bufname = self.state.bufname,
         winid = self.state.winid,
+        preview = opts.preview,
         callback = function(bufnr)
           pcall(vim.api.nvim_buf_call, bufnr, function()
             determine_jump(entry)(self, bufnr)
           end)
         end,
+        file_encoding = opts.file_encoding,
       })
     end,
   }
 end, {})
 
-previewers.builtin = defaulter(function(_)
+previewers.builtin = defaulter(function(opts)
   return previewers.new_buffer_previewer {
     title = "Grep Preview",
     teardown = search_teardown,
@@ -678,15 +682,17 @@ previewers.builtin = defaulter(function(_)
       conf.buffer_previewer_maker(entry.filename, self.state.bufnr, {
         bufname = self.state.bufname,
         winid = self.state.winid,
+        preview = opts.preview,
         callback = function(bufnr)
           search_cb_jump(self, bufnr, text)
         end,
+        file_encoding = opts.file_encoding,
       })
     end,
   }
 end, {})
 
-previewers.help = defaulter(function(_)
+previewers.help = defaulter(function(opts)
   return previewers.new_buffer_previewer {
     title = "Help Preview",
     teardown = search_teardown,
@@ -703,10 +709,12 @@ previewers.help = defaulter(function(_)
       conf.buffer_previewer_maker(entry.filename, self.state.bufnr, {
         bufname = self.state.bufname,
         winid = self.state.winid,
+        preview = opts.preview,
         callback = function(bufnr)
           putils.regex_highlighter(bufnr, "help")
           search_cb_jump(self, bufnr, query)
         end,
+        file_encoding = opts.file_encoding,
       })
     end,
   }
@@ -982,6 +990,8 @@ previewers.git_file_diff = defaulter(function(opts)
         conf.buffer_previewer_maker(p, self.state.bufnr, {
           bufname = self.state.bufname,
           winid = self.state.winid,
+          preview = opts.preview,
+          file_encoding = opts.file_encoding,
         })
       else
         local cmd = git_command({ "--no-pager", "diff", "HEAD", "--", entry.value }, opts)
@@ -1105,7 +1115,7 @@ previewers.highlights = defaulter(function(_)
 
       vim.schedule(function()
         vim.api.nvim_buf_call(self.state.bufnr, function()
-          vim.cmd "norm! gg"
+          vim.cmd "keepjumps norm! gg"
           vim.fn.search(entry.value .. " ")
           local lnum = vim.api.nvim_win_get_cursor(self.state.winid)[1]
           -- That one is actually a match but its better to use it like that then matchadd
