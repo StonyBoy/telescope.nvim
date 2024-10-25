@@ -184,7 +184,7 @@ do
 
       if k == "path" then
         local retpath = Path:new({ t.cwd, t.value }):absolute()
-        if not vim.loop.fs_access(retpath, "R", nil) then
+        if not vim.loop.fs_access(retpath, "R") then
           retpath = t.value
         end
         return retpath
@@ -540,8 +540,14 @@ function make_entry.gen_from_lsp_symbols(opts)
         msg,
       }
     else
+      local display_path, path_style = utils.transform_path(opts, entry.filename)
       return displayer {
-        utils.transform_path(opts, entry.filename),
+        {
+          display_path,
+          function()
+            return path_style
+          end,
+        },
         entry.symbol_name,
         { entry.symbol_type:lower(), type_highlight[entry.symbol_type] },
         msg,
@@ -618,9 +624,8 @@ function make_entry.gen_from_buffer(opts)
   end
 
   return function(entry)
-    local bufname = entry.info.name ~= "" and entry.info.name or "[No Name]"
-    -- if bufname is inside the cwd, trim that part of the string
-    bufname = Path:new(bufname):normalize(cwd)
+    local filename = entry.info.name ~= "" and entry.info.name or nil
+    local bufname = filename and Path:new(filename):normalize(cwd) or "[No Name]"
 
     local hidden = entry.info.hidden == 1 and "h" or "a"
     local readonly = vim.api.nvim_buf_get_option(entry.bufnr, "readonly") and "=" or " "
@@ -643,8 +648,8 @@ function make_entry.gen_from_buffer(opts)
       value = bufname,
       ordinal = entry.bufnr .. " : " .. bufname,
       display = make_display,
-
       bufnr = entry.bufnr,
+      path = filename,
       filename = bufname,
       lnum = lnum,
       indicator = indicator,
@@ -658,7 +663,7 @@ function make_entry.gen_from_treesitter(opts)
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
 
   local display_items = {
-    { width = 25 },
+    { width = opts.symbol_width or 25 },
     { width = 10 },
     { remaining = true },
   }
@@ -998,20 +1003,12 @@ function make_entry.gen_from_vimoptions(opts)
       display = make_display,
       value = {
         name = o.name,
-        value = o.default,
+        value = o.value,
         type = o.type,
         scope = o.scope,
       },
-      ordinal = string.format("%s %s %s", o.name, o.type, o.scope),
+      ordinal = string.format("%s %s %s %s", o.name, o.type, o.scope, utils.display_termcodes(tostring(o.value))),
     }
-
-    local ok, value = pcall(vim.api.nvim_get_option, o.name)
-    if ok then
-      entry.value.value = value
-      entry.ordinal = entry.ordinal .. " " .. utils.display_termcodes(tostring(value))
-    else
-      entry.ordinal = entry.ordinal .. " " .. utils.display_termcodes(tostring(o.default))
-    end
 
     return make_entry.set_default_entry_mt(entry, opts)
   end
@@ -1020,10 +1017,12 @@ end
 function make_entry.gen_from_ctags(opts)
   opts = opts or {}
 
+  local show_kind = vim.F.if_nil(opts.show_kind, true)
   local cwd = utils.path_expand(opts.cwd or vim.loop.cwd())
   local current_file = Path:new(vim.api.nvim_buf_get_name(opts.bufnr)):normalize(cwd)
 
   local display_items = {
+    { width = 16 },
     { remaining = true },
   }
 
@@ -1044,7 +1043,7 @@ function make_entry.gen_from_ctags(opts)
   }
 
   local make_display = function(entry)
-    local filename = utils.transform_path(opts, entry.filename)
+    local display_path, path_style = utils.transform_path(opts, entry.filename)
 
     local scode
     if opts.show_line then
@@ -1058,8 +1057,14 @@ function make_entry.gen_from_ctags(opts)
       }
     else
       return displayer {
-        filename,
+        {
+          display_path,
+          function()
+            return path_style
+          end,
+        },
         entry.tag,
+        entry.kind,
         scode,
       }
     end
@@ -1074,7 +1079,7 @@ function make_entry.gen_from_ctags(opts)
 
     if k == "path" then
       local retpath = Path:new({ t.filename }):absolute()
-      if not vim.loop.fs_access(retpath, "R", nil) then
+      if not vim.loop.fs_access(retpath, "R") then
         retpath = t.filename
       end
       return retpath
@@ -1087,13 +1092,14 @@ function make_entry.gen_from_ctags(opts)
       return nil
     end
 
-    local tag, file, scode, lnum
-    -- ctags gives us: 'tags\tfile\tsource'
-    tag, file, scode = string.match(line, '([^\t]+)\t([^\t]+)\t/^?\t?(.*)/;"\t+.*')
+    local tag, file, scode, lnum, extension_fields
+    -- ctags gives us: 'tags\tfile\tsource;"extension_fields'
+    tag, file, scode, extension_fields = string.match(line, '([^\t]+)\t([^\t]+)\t/^?\t?(.*)/;"\t+(.*)')
     if not tag then
       -- hasktags gives us: 'tags\tfile\tlnum'
       tag, file, lnum = string.match(line, "([^\t]+)\t([^\t]+)\t(%d+).*")
     end
+    local kind = string.match(extension_fields or "", "kind:(%S+)")
 
     if Path.path.sep == "\\" then
       file = string.gsub(file, "/", "\\")
@@ -1122,6 +1128,9 @@ function make_entry.gen_from_ctags(opts)
     tag_entry.filename = file
     tag_entry.col = 1
     tag_entry.lnum = lnum and tonumber(lnum) or 1
+    if show_kind then
+      tag_entry.kind = kind
+    end
 
     return setmetatable(tag_entry, mt)
   end
@@ -1175,7 +1184,7 @@ function make_entry.gen_from_diagnostics(opts)
   }
 
   local make_display = function(entry)
-    local filename = utils.transform_path(opts, entry.filename)
+    local display_path, path_style = utils.transform_path(opts, entry.filename)
 
     -- add styling of entries
     local pos = string.format("%4d:%2d", entry.lnum, entry.col)
@@ -1188,7 +1197,12 @@ function make_entry.gen_from_diagnostics(opts)
     return displayer {
       line_info,
       entry.text,
-      filename,
+      {
+        display_path,
+        function()
+          return path_style
+        end,
+      },
     }
   end
 
@@ -1346,11 +1360,18 @@ function make_entry.gen_from_git_status(opts)
     local status_x = git_abbrev[x] or {}
     local status_y = git_abbrev[y] or {}
 
+    local display_path, path_style = utils.transform_path(opts, entry.path)
+
     local empty_space = " "
     return displayer {
       { status_x.icon or empty_space, status_x.hl },
       { status_y.icon or empty_space, status_y.hl },
-      utils.transform_path(opts, entry.path),
+      {
+        display_path,
+        function()
+          return path_style
+        end,
+      },
     }
   end
 
@@ -1366,7 +1387,7 @@ function make_entry.gen_from_git_status(opts)
       return nil
     end
 
-    return setmetatable({
+    return make_entry.set_default_entry_mt({
       value = file,
       status = mod,
       ordinal = entry,
